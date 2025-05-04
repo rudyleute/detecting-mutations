@@ -17,7 +17,7 @@ find_package(ZLIB REQUIRED)
 link_directories("/usr/local/lib")
 
 # Add your source files to create the executable
-add_executable(DetectingMutations main.cpp SamReader.cpp)
+add_executable(DetectingMutations main.cpp FilesReader.cpp)
 
 # Link BamTools and zlib libraries
 target_link_libraries(DetectingMutations bamtools ${ZLIB_LIBRARIES})
