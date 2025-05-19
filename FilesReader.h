@@ -16,6 +16,7 @@ class FilesReader {
 public:
 	static std::map<char, size_t> nucleoMapping;
 	static std::map<size_t, char> rNucleoMapping;
+	static std::map<string, size_t> cigarIndices;
 
 	static AlignmentMaps getAlignments(const std::string& fileName, const size_t &from, const size_t &to);
 	static size_t getReferenceLength(const std::string& fileName);
@@ -54,7 +55,6 @@ public:
 				curMaxNucleos.insert(FilesReader::rNucleoMapping[i]);
 			}
 		}
-		//TODO if it is an insertion, I should return anything but the base if the base is in the curMaxNucleos and there are several elements
 		auto result = curMaxNucleos.find(base);
 
 		//If there are more than two nucleotides with the same score and one of them is the base

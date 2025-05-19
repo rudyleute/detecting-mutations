@@ -166,6 +166,7 @@ int main(int argc, char* argv[]) {
 			linesCovered++;
 		}
 
+		//TODO ensure that only indices within the current window range are analyzed. The rest must be propagated to the next iteration
 		for (const auto& [first, second] : insertions) {
 			if (first == 846) {
 				cout << 2;
