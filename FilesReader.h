@@ -4,6 +4,8 @@
 #include <set>
 #include <boost/icl/interval_map.hpp>
 #include <utility>
+#include <list>
+#include <htslib/sam.h>
 
 using namespace std;
 using namespace boost::icl;
@@ -12,13 +14,14 @@ using namespace boost::icl;
 struct NucleoCounter;
 struct AlignmentMaps;
 using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
+using CigarString = std::list<pair<char, size_t>>;
 
 
 class FilesReader {
 public:
 	static std::map<char, size_t> nucleoMapping;
 	static std::map<size_t, char> rNucleoMapping;
-	static std::map<string, tuple<size_t, size_t, size_t>> cigarIndices;
+	static std::map<std::string, std::tuple<size_t, size_t, size_t>> cigarIndices;
 
 	static AlignmentMaps getAlignments(const std::string& fileName, const size_t& from, const size_t& to, InsertionMap prevIterInsertions);
 	static size_t getReferenceLength(const std::string& fileName);
@@ -26,6 +29,9 @@ public:
 	static void reverseComplement(string& read);
 	static string getRefGen(const string& fileName);
 	static std::map<size_t, std::pair<char, char>> readReferenceCsv(const string& fileName);
+	static CigarString getCigarString(bam1_t* b);
+	static string getRead(bam1_t* b, bool isReversed=false);
+	static string getExpandedRead(string read, CigarString &cigar);
 };
 
 struct NucleoCounter {

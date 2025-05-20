@@ -186,7 +186,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		for (const auto& [first, second] : insertions) {
-			if (first == 44428) {
+			if (first == 44373) {
 				//TODO something is wrong with nucleoMapping - it has too many elements
 				cout << 2;
 			}
