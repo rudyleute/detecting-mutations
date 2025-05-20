@@ -63,6 +63,18 @@ size_t findDifferenceSize(const list<string>& first, const set<string>& second) 
 	return result.size();
 }
 
+void mergeInsertions(InsertionMap &first, InsertionMap second) {
+	for (auto &elem : second) {
+		if (first.find(elem.first) == first.end()) {
+			first.insert(elem);
+			break;
+		}
+
+		first[elem.first].first.merge(elem.second.first);
+		first[elem.first].second.merge(elem.second.second);
+	}
+}
+
 int main(int argc, char* argv[]) {
 	const std::string fpAlignment = std::filesystem::current_path().parent_path().string() + '/' + argv[1];
 	const std::string fpRefGen = std::filesystem::current_path().parent_path().string() + '/' + argv[2];
@@ -85,12 +97,18 @@ int main(int argc, char* argv[]) {
 	char curNucleo;
 	NucleoCounter nucleoCounter;
 
+	auto alignments = AlignmentMaps();
+	auto startingPos = alignments.startingPos;
+	auto insertions = alignments.insertionCount;
+	auto insertionsOOB = alignments.insertionCountOOB;
+
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
 	for (size_t windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		auto alignments = FilesReader::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE);
-		auto startingPos = alignments.startingPos;
-		auto insertions = alignments.insertionCount;
+		alignments = FilesReader::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertionsOOB);
+		startingPos = alignments.startingPos;
+		insertions = alignments.insertionCount;
+		insertionsOOB = alignments.insertionCountOOB;
 
 		size_t linesCovered = 0;
 		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, line)) {
@@ -113,11 +131,12 @@ int main(int argc, char* argv[]) {
 				 */
 
 				// Add new reads that start at the current position to the list of the ones analysed
-				if (startingPos.find(curPos) != startingPos.end())
+				if (startingPos.find(curPos) != startingPos.end()) {
 					for (const auto& [first, second] : startingPos[curPos]) {
 						curReads.emplace_front(first, curPos);
 						curReadsNames.emplace_front(second);
 					}
+				}
 
 				//TODO if the size of curReads is less than 5, move curPos to the next element available in startingPos or among insertion indices
 
@@ -166,9 +185,9 @@ int main(int argc, char* argv[]) {
 			linesCovered++;
 		}
 
-		//TODO ensure that only indices within the current window range are analyzed. The rest must be propagated to the next iteration
 		for (const auto& [first, second] : insertions) {
-			if (first == 846) {
+			if (first == 44428) {
+				//TODO something is wrong with nucleoMapping - it has too many elements
 				cout << 2;
 			}
 			if (second.first.size() >= MIN_READS)
@@ -179,5 +198,5 @@ int main(int argc, char* argv[]) {
 
 	auto csvMap = FilesReader::readReferenceCsv(referenceCsv);
 	auto comp = compareMaps(csvMap, errors);
-	cout << 2 << std::endl;
+	cout << 3;
 }

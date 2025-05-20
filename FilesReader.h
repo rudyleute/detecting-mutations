@@ -8,40 +8,46 @@
 using namespace std;
 using namespace boost::icl;
 
+
 struct NucleoCounter;
 struct AlignmentMaps;
+using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
 
 
 class FilesReader {
 public:
 	static std::map<char, size_t> nucleoMapping;
 	static std::map<size_t, char> rNucleoMapping;
-	static std::map<string, size_t> cigarIndices;
+	static std::map<string, tuple<size_t, size_t, size_t>> cigarIndices;
 
-	static AlignmentMaps getAlignments(const std::string& fileName, const size_t &from, const size_t &to);
+	static AlignmentMaps getAlignments(const std::string& fileName, const size_t& from, const size_t& to, InsertionMap prevIterInsertions);
 	static size_t getReferenceLength(const std::string& fileName);
-	static char complementSymbol(const char &n);
-	static void reverseComplement(string &read);
-	static string getRefGen(const string &fileName);
-	static std::map<size_t, std::pair<char, char>> readReferenceCsv(const string &fileName);
+	static char complementSymbol(const char& n);
+	static void reverseComplement(string& read);
+	static string getRefGen(const string& fileName);
+	static std::map<size_t, std::pair<char, char>> readReferenceCsv(const string& fileName);
 };
 
 struct NucleoCounter {
 private:
 	std::vector<size_t> counters;
 
+	vector<size_t> getCounters() const {
+		return counters;
+	}
+
 public:
 	NucleoCounter(): counters(FilesReader::nucleoMapping.size()) {}
 
-	void increase(const char &nucleo) {
+	void increase(const char& nucleo) {
 		counters[FilesReader::nucleoMapping[nucleo]]++;
 	}
 
-	void setCounter(const char &nucleo, const size_t &value) {
+	void setCounter(const char& nucleo, const size_t& value) {
 		counters[FilesReader::nucleoMapping[nucleo]] = value;
 	}
 
-	char findMax(const char &base, const bool isInsertion=false) const {
+	char findMax(const char& base, const bool isInsertion = false) const {
 		size_t curMax = 0;
 		set<char> curMaxNucleos;
 
@@ -59,7 +65,7 @@ public:
 
 		//If there are more than two nucleotides with the same score and one of them is the base
 		if (isInsertion && curMaxNucleos.size() > 1 && result != curMaxNucleos.end()) {
-			for (auto nucleo: curMaxNucleos) {
+			for (auto nucleo : curMaxNucleos) {
 				if (nucleo != base) return nucleo;
 			}
 		};
@@ -69,6 +75,13 @@ public:
 
 	void flush() {
 		std::fill(counters.begin(), counters.end(), 0);
+	}
+
+	void merge(const NucleoCounter& other) {
+		const auto result = other.getCounters();
+		for (size_t i = 0; i != counters.size(); i++) {
+			counters[i] += result[i];
+		}
 	}
 
 	size_t size() const {
@@ -81,9 +94,16 @@ public:
 
 struct AlignmentMaps {
 	std::map<size_t, set<pair<string, string>>> startingPos;
-	std::map<size_t, pair<NucleoCounter, set<string>>> insertionCount;
+	InsertionMap insertionCount;
+	InsertionMap insertionCountOOB;
 
-	AlignmentMaps(std::map<size_t, set<pair<string, string>>> alignments, std::map<size_t, pair<NucleoCounter, set<string>>> insertions): startingPos(move(alignments)), insertionCount(move(insertions)) {}
+	AlignmentMaps(const std::map<size_t, set<pair<string, string>>>& alignments,
+	              const InsertionMap& insertions,
+	              const InsertionMap& insertionsOOB): startingPos(alignments),
+	                                                  insertionCount(insertions),
+	                                                  insertionCountOOB(insertionsOOB) {}
+
+	AlignmentMaps() = default;
 };
 
 #endif //FILESREADER_H
