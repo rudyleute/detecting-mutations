@@ -5,6 +5,9 @@
 #include <list>
 
 #include "FilesReader.h"
+#include "Comparator.h"
+
+using FR = FilesReader;
 
 #define FASTA_LINE_LEN 80
 #define LINES_IN_WINDOW int(1e2)
@@ -13,108 +16,46 @@
 
 using namespace std;
 
-struct Read {
-	size_t index;
-	const size_t endPos;
-	const string sequence;
-
-	explicit Read(const string& read, const size_t& startingPos): index(0), endPos(startingPos + read.size() - 1),
-	                                                              sequence(read) {}
-};
-
-struct compRes {
-	std::vector<std::tuple<size_t, char, char>> difference1;
-	std::vector<std::tuple<size_t, char, char>> difference2;
-	std::vector<std::tuple<size_t, char, char, char, char>> errors;
-
-	explicit compRes(std::vector<std::tuple<size_t, char, char>> difference1,
-	                 std::vector<std::tuple<size_t, char, char>> difference2,
-	                 std::vector<std::tuple<size_t, char, char, char, char>> errors):
-		difference1(std::move(difference1)), difference2(std::move(difference2)), errors(std::move(errors)) {}
-};
-
-compRes compareMaps(const std::map<size_t, std::pair<char, char>>& map1,
-                    const std::map<size_t, std::pair<char, char>>& map2) {
-	std::vector<std::tuple<size_t, char, char>> difference1;
-	std::vector<std::tuple<size_t, char, char>> difference2;
-	std::vector<std::tuple<size_t, char, char, char, char>> errors;
-
-	for (const auto& [key, val1] : map1) {
-		auto it = map2.find(key);
-		if (it == map2.end()) difference1.emplace_back(key, val1.first, val1.second);
-		else if (it->second != val1)
-			errors.emplace_back(key, val1.first, val1.second, it->second.first,
-			                    it->second.second);
-	}
-
-	for (const auto& [key, val2] : map2) {
-		if (map1.find(key) == map1.end()) difference2.emplace_back(key, val2.first, val2.second);
-	}
-
-	return compRes(difference1, difference2, errors);
-}
-
-size_t findDifferenceSize(const list<string>& first, const set<string>& second) {
-	set<string> result;
-
-	for (const auto& elem : first)
-		if (second.find(elem) != second.end()) result.insert(elem);
-
-	return result.size();
-}
-
-void mergeInsertions(InsertionMap &first, InsertionMap second) {
-	for (auto &elem : second) {
-		if (first.find(elem.first) == first.end()) {
-			first.insert(elem);
-			break;
-		}
-
-		first[elem.first].first.merge(elem.second.first);
-		first[elem.first].second.merge(elem.second.second);
-	}
-}
-
 int main(int argc, char* argv[]) {
-	const std::string fpAlignment = std::filesystem::current_path().parent_path().string() + '/' + argv[1];
-	const std::string fpRefGen = std::filesystem::current_path().parent_path().string() + '/' + argv[2];
-	const std::string referenceCsv = std::filesystem::current_path().parent_path().string() + '/' + argv[3];
+	const string fpAlignment = FR::formFullPath(argv[1]);
+	const string fpRefGen = FR::formFullPath(argv[2]);
+	const string referenceCsv = FR::formFullPath(argv[3]);
 
-	auto refGenLen = FilesReader::getReferenceLength(fpAlignment);
+	auto refGenLen = FR::getReferenceLength(fpAlignment);
 
 	ifstream refGenFile(fpRefGen);
 	if (!refGenFile.is_open()) {
-		std::cerr << "Failed to open file: " << fpRefGen << "\n";
+		cerr << "Failed to open file: " << fpRefGen << "\n";
 		return -1;
 	}
 
-	string line;
+	string curRefGenLine;
 	size_t curStart = 0;
 	list<Read> curReads;
 	list<string> curReadsNames;
 	size_t linePos;
-	std::map<size_t, std::pair<char, char>> errors;
+	Mutations errors;
 	char curNucleo;
 	NucleoCounter nucleoCounter;
 
 	auto alignments = AlignmentMaps();
 	auto startingPos = alignments.startingPos;
-	auto insertions = alignments.insertionCount;
-	auto insertionsOOB = alignments.insertionCountOOB;
+	auto insertions = alignments.insertions;
+	auto insertionsOOB = alignments.insertionsOOB;
 
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
 	for (size_t windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		alignments = FilesReader::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertionsOOB);
+		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertionsOOB);
 		startingPos = alignments.startingPos;
-		insertions = alignments.insertionCount;
-		insertionsOOB = alignments.insertionCountOOB;
+		insertions = alignments.insertions;
+		insertionsOOB = alignments.insertionsOOB;
 
 		size_t linesCovered = 0;
-		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, line)) {
-			if (line.empty() || line[0] == '>') continue;
+		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, curRefGenLine)) {
+			if (curRefGenLine.empty() || curRefGenLine[0] == '>') continue;
 
-			for (linePos = 0; linePos < line.size(); linePos++) {
+			for (linePos = 0; linePos < curRefGenLine.size(); linePos++) {
 				size_t curPos = linePos + curStart;
 				/*
 				 * Check whether there are reads starting with pos + curPos position
@@ -139,6 +80,7 @@ int main(int argc, char* argv[]) {
 				}
 
 				//TODO if the size of curReads is less than 5, move curPos to the next element available in startingPos or among insertion indices
+				//TODO instead of constantly iterating over reads, have a map that will store pointers to the respective curReads and name of the read
 
 				// If the number of reads for the current position is less than 5, we do not have enough data to do a meaningful evaluation
 				if (curReads.size() >= MIN_READS) {
@@ -159,9 +101,9 @@ int main(int argc, char* argv[]) {
 						}
 					}
 
-					if (const char maxNucleo = nucleoCounter.findMax(line[linePos]); maxNucleo != line[linePos]) {
+					if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[linePos]) {
 						const char actionType = maxNucleo == '-' ? 'D' : 'X';
-						errors[curPos] = std::make_pair(maxNucleo, actionType);
+						errors[curPos] = make_pair(maxNucleo, actionType);
 					}
 				} else {
 					for (auto iter = curReads.begin(); iter != curReads.end();) {
@@ -186,17 +128,12 @@ int main(int argc, char* argv[]) {
 		}
 
 		for (const auto& [first, second] : insertions) {
-			if (first == 44373) {
-				//TODO something is wrong with nucleoMapping - it has too many elements
-				cout << 2;
-			}
 			if (second.first.size() >= MIN_READS)
-				if (const char maxNucleo = second.first.findMax('-', true); maxNucleo != '-')
-					errors[first] = std::make_pair(maxNucleo, 'I');
+				if (const char maxNucleo = second.first.findMax('-'); maxNucleo != '-')
+					errors[first] = make_pair(maxNucleo, 'I');
 		}
 	}
 
-	auto csvMap = FilesReader::readReferenceCsv(referenceCsv);
-	auto comp = compareMaps(csvMap, errors);
-	cout << 3;
+	auto csvMap = FR::readFreeBayesVCF(referenceCsv);
+	auto comp = Comparator::compareMaps(csvMap, errors);
 }

@@ -8,7 +8,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(HTSLIB REQUIRED htslib)
 
 # Add your source files to create the executable
-add_executable(DetectingMutations main.cpp FilesReader.cpp)
+add_executable(DetectingMutations main.cpp FilesReader.cpp Comparator.cpp)
 
 # Include directories
 include_directories(${HTSLIB_INCLUDE_DIRS})
