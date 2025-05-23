@@ -40,16 +40,14 @@ int main(int argc, char* argv[]) {
 
 	auto alignments = AlignmentMaps();
 	auto startingPos = alignments.startingPos;
-	auto insertions = alignments.insertions;
-	auto insertionsOOB = alignments.insertionsOOB;
+	auto insertions = alignments.windowInsertions;
 
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
 	for (size_t windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertionsOOB);
+		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getInsertionsOOB());
 		startingPos = alignments.startingPos;
-		insertions = alignments.insertions;
-		insertionsOOB = alignments.insertionsOOB;
+		insertions = alignments.windowInsertions;
 
 		size_t linesCovered = 0;
 		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, curRefGenLine)) {
@@ -94,14 +92,14 @@ int main(int argc, char* argv[]) {
 							advance(namesIter, distance(curReads.begin(), iter));
 							curReadsNames.erase(namesIter);
 							iter = curReads.erase(iter);
-						}
-						else {
+						} else {
 							iter->index++;
 							++iter;
 						}
 					}
 
-					if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[linePos]) {
+					if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine
+						[linePos]) {
 						const char actionType = maxNucleo == '-' ? 'D' : 'X';
 						errors[curPos] = make_pair(maxNucleo, actionType);
 					}
@@ -113,8 +111,7 @@ int main(int argc, char* argv[]) {
 							advance(namesIter, distance(curReads.begin(), iter));
 							curReadsNames.erase(namesIter);
 							iter = curReads.erase(iter);
-						}
-						else {
+						} else {
 							iter->index++;
 							++iter;
 						}
@@ -127,13 +124,10 @@ int main(int argc, char* argv[]) {
 			linesCovered++;
 		}
 
-		for (const auto& [first, second] : insertions) {
-			if (second.first.size() >= MIN_READS)
-				if (const char maxNucleo = second.first.findMax('-'); maxNucleo != '-')
-					errors[first] = make_pair(maxNucleo, 'I');
-		}
+		errors.merge(insertions.findInsertionMutations(MIN_READS));
 	}
 
 	auto csvMap = FR::readFreeBayesVCF(referenceCsv);
 	auto comp = Comparator::compareMaps(csvMap, errors);
+	cout << 3;
 }

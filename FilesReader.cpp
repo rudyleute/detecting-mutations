@@ -15,7 +15,11 @@
 using namespace std;
 
 std::map<char, size_t> FilesReader::nucleoMapping = {
-	{'A', 0}, {'G', 1}, {'C', 2}, {'T', 3}, {'-', 4}
+	{'A', 0},
+	{'G', 1},
+	{'C', 2},
+	{'T', 3},
+	{'-', 4}
 };
 
 std::map<size_t, char> FilesReader::rNucleoMapping = [] {
@@ -117,8 +121,7 @@ string FilesReader::getExpandedRead(string read, CigarString& cigar) {
 			readFrom = curInd;
 
 			expandedRead += string(cigarElem.second, '-');
-		}
-		else curInd += cigarElem.second;
+		} else curInd += cigarElem.second;
 	}
 
 	if (curInd != readFrom) expandedRead += read.substr(readFrom, curInd - readFrom);
@@ -154,7 +157,7 @@ Mutations FilesReader::readFreeBayesVCF(const string& fileName) {
 		size_t altLen = alt.size();
 
 		std::string variantType;
-		if (refLen == 1 && altLen == 1)	mutations[pos] = std::make_pair(alt[0], 'X');
+		if (refLen == 1 && altLen == 1) mutations[pos] = std::make_pair(alt[0], 'X');
 		else {
 			size_t lenDiff = (refLen > altLen) ? (refLen - altLen) : (altLen - refLen);
 
@@ -162,7 +165,6 @@ Mutations FilesReader::readFreeBayesVCF(const string& fileName) {
 			else if (refLen > altLen) mutations[pos + 1] = std::make_pair('-', 'D');
 			else if (refLen < altLen) mutations.merge(getVCFInsertions(ref, alt, pos + 1));
 		}
-
 	}
 
 	// Cleanup
@@ -189,8 +191,12 @@ size_t FilesReader::getReferenceLength(const string& fileName) {
 	return refLen;
 }
 
-AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& from, const size_t& to,
-                                         InsertionMap prevIterInsertions) {
+AlignmentMaps FilesReader::getAlignments(
+	const string& fileName,
+	const size_t& from,
+	const size_t& to,
+	InsertionMap prevIterInsertions
+) {
 	samFile* in = sam_open(fileName.c_str(), "r");
 	bam_hdr_t* header = sam_hdr_read(in);
 
@@ -201,8 +207,7 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 	bam1_t* b = bam_init1();
 
 	std::map<size_t, set<pair<string, string>>> startingPos;
-	std::map<size_t, pair<NucleoCounter, set<string>>> insertions = move(prevIterInsertions);
-	std::map<size_t, pair<NucleoCounter, set<string>>> insertionsOOB;
+	Insertions insertions = Insertions(prevIterInsertions);
 
 	while (sam_itr_next(in, iter, b) >= 0) {
 		//Check whether the sequence has been aligned to the reference genome
@@ -214,6 +219,7 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 
 		const string read = getRead(b);
 		string expandedRead = getExpandedRead(read, cigarExpanded);
+		insertions.setRead(expandedRead, name);
 
 		//Aligned position for the string with cut out insertions (for the direct substitution and deletion analysis)
 		size_t readSDStart = pos;
@@ -238,8 +244,7 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 			startPos = from;
 
 			cigarIndices.erase(name);
-		}
-		else if (startPos < from) continue;
+		} else if (startPos < from) continue;
 		//Since the insertions are cut out, if the first non-clipped part of the string requires an insertion
 		//the starting index should take that into consideration
 		if (cigarExpanded.begin()->first == 'I') readSDStart += cigarExpanded.begin()->second;
@@ -259,29 +264,13 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 				//We can cover the insertions even if they get out of the window as it does not increase the indices for S and D
 				const size_t left = to - refGenIndex;
 				const size_t end = isInsertion ? cigarIter->first : left;
-				auto* curMap = &insertions;
 
 				if (isInsertion) {
 					noInsertionsRead += expandedRead.substr(readFromIndex, curReadIndex - readFromIndex);
 					readFromIndex = curReadIndex + cigarIter->second;
 				}
 
-				for (size_t i = 0; i != end; i++) {
-					if (i == left) {
-						curMap = &insertionsOOB;
-					}
-
-					if (isInsertion) {
-						(*curMap)[refGenIndex + i].first.increase(expandedRead[curReadIndex + i]);
-						(*curMap)[refGenIndex + i].second.insert(name);
-					}
-					else if ((*curMap)[refGenIndex + i].second.find(name) == (*curMap)[refGenIndex + i].
-					                                                         second.
-					                                                         end()) {
-						(*curMap)[refGenIndex + i].first.increase('-');
-					}
-				}
-
+				insertions.addInsertion(refGenIndex, curReadIndex, end, left, isInsertion);
 				if (!isInsertion) {
 					//We want to store the position in the iteration string, length covered and position in the expanded string
 					//in order to start the analysis of the string within the next window quicker
@@ -300,18 +289,7 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 				noInsertionsRead += expandedRead.substr(readFromIndex, curReadIndex - readFromIndex);
 				readFromIndex = curReadIndex + cigarIter->second;
 			}
-
-			for (size_t i = 0; i != cigarIter->second; i++) {
-				if (isInsertion) {
-					insertions[refGenIndex + i].first.increase(expandedRead[curReadIndex + i]);
-					insertions[refGenIndex + i].second.insert(name);
-				}
-				else if (insertions[refGenIndex + i].second.find(name) == insertions[refGenIndex + i].second.
-				                                                                                      end()) {
-					//Due to the difference in indexing, we may have the same sequence counted twice for the same
-					insertions[refGenIndex + i].first.increase('-');
-				}
-			}
+			insertions.addInsertion(refGenIndex, curReadIndex, cigarIter->second, cigarIter->second, isInsertion);
 
 			if (isInsertion) insertionsFound += cigarIter->second;
 			curReadIndex += cigarIter->second;
@@ -332,5 +310,5 @@ AlignmentMaps FilesReader::getAlignments(const string& fileName, const size_t& f
 	bam_hdr_destroy(header);
 	sam_close(in);
 
-	return {startingPos, insertions, insertionsOOB};
+	return {startingPos, insertions};
 }

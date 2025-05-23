@@ -6,6 +6,7 @@
 #include <utility>
 #include <list>
 #include <htslib/sam.h>
+#include <iostream>
 
 using namespace std;
 using namespace boost::icl;
@@ -13,6 +14,8 @@ using namespace boost::icl;
 
 struct NucleoCounter;
 struct AlignmentMaps;
+struct Insertions;
+
 using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
 using CigarString = std::list<pair<char, size_t>>;
 using Mutations = std::map<size_t, std::pair<char, char>>;
@@ -26,13 +29,18 @@ public:
 	static std::map<size_t, char> rNucleoMapping;
 	static std::map<std::string, std::tuple<size_t, size_t, size_t>> cigarIndices;
 
-	static AlignmentMaps getAlignments(const std::string& fileName, const size_t& from, const size_t& to, InsertionMap prevIterInsertions);
+	static AlignmentMaps getAlignments(
+		const std::string& fileName,
+		const size_t& from,
+		const size_t& to,
+		InsertionMap prevIterInsertions
+	);
 	static size_t getReferenceLength(const std::string& fileName);
 	static string getRefGen(const string& fileName);
 	static std::map<size_t, std::pair<char, char>> readFreeBayesVCF(const string& fileName);
 	static CigarString getCigarString(const bam1_t* b);
 	static string getRead(const bam1_t* b);
-	static string getExpandedRead(string read, CigarString &cigar);
+	static string getExpandedRead(string read, CigarString& cigar);
 	static string formFullPath(const string& fileName);
 };
 
@@ -75,8 +83,7 @@ public:
 		if (ratio >= 0.5) {
 			//Return the first alphabetically sorted non-base value if it is seen in at least 50% of cases
 			if (ratio > 0.5 || curMaxNucleos.size() == 1) return *curMaxNucleos.begin();
-			for (const auto &elem: curMaxNucleos)
-				if (elem != base) return elem;
+			for (const auto& elem : curMaxNucleos) if (elem != base) return elem;
 		}
 
 		return base;
@@ -101,16 +108,84 @@ public:
 	}
 };
 
-struct AlignmentMaps {
-	std::map<size_t, set<pair<string, string>>> startingPos;
+struct Insertions {
+private:
 	InsertionMap insertions;
 	InsertionMap insertionsOOB;
+	set<size_t> insertionIndices;
 
-	AlignmentMaps(const std::map<size_t, set<pair<string, string>>>& alignments,
-	              const InsertionMap& insertions,
-	              const InsertionMap& insertionsOOB): startingPos(alignments),
-	                                                  insertions(insertions),
-	                                                  insertionsOOB(insertionsOOB) {}
+	InsertionMap* curMap;
+	string expandedRead;
+	string name;
+
+	void addValues(const size_t& refGenIndex, const size_t& curReadIndex, const size_t& start, const size_t& end, const bool isInsertion) {
+		for (size_t i = start; i != end; i++) {
+			if (isInsertion) {
+				(*curMap)[refGenIndex + i].first.increase(expandedRead[curReadIndex + i]);
+				(*curMap)[refGenIndex + i].second.insert(name);
+				insertionIndices.insert(refGenIndex + i);
+			} else if ((*curMap)[refGenIndex + i].second.find(name) == (*curMap)[refGenIndex + i].second.end()) {
+				(*curMap)[refGenIndex + i].first.increase('-');
+			}
+		}
+	}
+
+public:
+	Insertions() = default;
+
+	Insertions(
+		const InsertionMap& insertions,
+		const InsertionMap& insertionsOOB = InsertionMap(),
+		const set<size_t>& insertionIndices = set<size_t>()
+	): insertions(insertions), insertionsOOB(insertionsOOB), insertionIndices(insertionIndices) {
+		curMap = &this->insertions;
+	}
+
+	void setRead(const string& expandedRead, const string& name) {
+		this->expandedRead = move(expandedRead);
+		this->name = move(name);
+	}
+	InsertionMap getInsertionsOOB() const {
+		return insertionsOOB;
+	}
+
+	void addInsertion(
+		const size_t& refGenIndex,
+		const size_t& curReadIndex,
+		const size_t& end,
+		const size_t& left,
+		const bool isInsertion = false
+	) {
+		if (left != end) {
+			this->addValues(refGenIndex, curReadIndex, 0, left, isInsertion);
+			curMap = &this->insertionsOOB;
+			this->addValues(refGenIndex, curReadIndex, left, end, isInsertion);
+			curMap = &this->insertions;
+		} else this->addValues(refGenIndex, curReadIndex, 0, end, isInsertion);
+	}
+
+	Mutations findInsertionMutations(const size_t &minReads) {
+		Mutations errors;
+
+		for (const auto& [first, second] : insertions) {
+			if (second.first.size() >= minReads)
+				if (const char maxNucleo = second.first.findMax('-'); maxNucleo != '-') errors[first] = make_pair(
+					maxNucleo, 'I');
+		}
+
+		return errors;
+	}
+};
+
+struct AlignmentMaps {
+	std::map<size_t, set<pair<string, string>>> startingPos;
+	Insertions windowInsertions;
+
+	AlignmentMaps(
+		const std::map<size_t, set<pair<string, string>>>& alignments,
+		const Insertions& windowInsertions
+	): startingPos(alignments),
+	   windowInsertions(windowInsertions) {}
 
 	AlignmentMaps() = default;
 };
