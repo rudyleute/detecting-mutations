@@ -19,7 +19,7 @@ struct Insertions;
 using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
 using CigarString = std::list<pair<char, size_t>>;
 using Mutations = std::map<size_t, std::pair<char, char>>;
-
+using Alignments = std::map<size_t, set<pair<string, string>>>;
 
 class FilesReader {
 	static Mutations getVCFInsertions(const string& ref, const string& alt, const size_t& pos);
@@ -178,11 +178,11 @@ public:
 };
 
 struct AlignmentMaps {
-	std::map<size_t, set<pair<string, string>>> startingPos;
+	Alignments startingPos;
 	Insertions windowInsertions;
 
 	AlignmentMaps(
-		const std::map<size_t, set<pair<string, string>>>& alignments,
+		const Alignments& alignments,
 		const Insertions& windowInsertions
 	): startingPos(alignments),
 	   windowInsertions(windowInsertions) {}

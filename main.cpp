@@ -31,11 +31,9 @@ int main(int argc, char* argv[]) {
 
 	string curRefGenLine;
 	size_t curStart = 0;
-	list<Read> curReads;
-	list<string> curReadsNames;
+	Reads curReads;
 	size_t linePos;
 	Mutations errors;
-	char curNucleo;
 	NucleoCounter nucleoCounter;
 
 	auto alignments = AlignmentMaps();
@@ -53,70 +51,19 @@ int main(int argc, char* argv[]) {
 		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, curRefGenLine)) {
 			if (curRefGenLine.empty() || curRefGenLine[0] == '>') continue;
 
+			curReads.setRefGenLine(curRefGenLine);
 			for (linePos = 0; linePos < curRefGenLine.size(); linePos++) {
 				size_t curPos = linePos + curStart;
-				/*
-				 * Check whether there are reads starting with pos + curPos position
-				 * If so, add them to the curReads
-				 * Check whether the number of current reads is smaller than 5
-				 * If so, skip the analysis until
-				 * Analysis:
-				 *		Find the most frequent symbol for the position based on the index param of each structure
-				 *		Compare it with the current one in the reference genome
-				 *		If it is different, add it to the map of result denoting whether it is a deletion or a substitution
-				 * Iterate over the current reads and check whether we reached the end of them
-				 * If so, remove them from the list
-				 * If not, increase the index param by 1
-				 */
 
 				// Add new reads that start at the current position to the list of the ones analysed
-				if (startingPos.find(curPos) != startingPos.end()) {
-					for (const auto& [first, second] : startingPos[curPos]) {
-						curReads.emplace_front(first, curPos);
-						curReadsNames.emplace_front(second);
-					}
-				}
+				if (startingPos.find(curPos) != startingPos.end()) curReads.addReads(startingPos, curPos);
 
 				//TODO if the size of curReads is less than 5, move curPos to the next element available in startingPos or among insertion indices
 				//TODO instead of constantly iterating over reads, have a map that will store pointers to the respective curReads and name of the read
 
 				// If the number of reads for the current position is less than 5, we do not have enough data to do a meaningful evaluation
-				if (curReads.size() >= MIN_READS) {
-					for (auto iter = curReads.begin(); iter != curReads.end();) {
-						curNucleo = (iter->sequence)[iter->index];
-						nucleoCounter.increase(curNucleo);
-
-						// If this is the end of the sequence, remove it from the list of analysed ones
-						if (iter->endPos == curPos) {
-							auto namesIter = curReadsNames.begin();
-							advance(namesIter, distance(curReads.begin(), iter));
-							curReadsNames.erase(namesIter);
-							iter = curReads.erase(iter);
-						} else {
-							iter->index++;
-							++iter;
-						}
-					}
-
-					if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine
-						[linePos]) {
-						const char actionType = maxNucleo == '-' ? 'D' : 'X';
-						errors[curPos] = make_pair(maxNucleo, actionType);
-					}
-				} else {
-					for (auto iter = curReads.begin(); iter != curReads.end();) {
-						// If this is the end of the sequence, remove it from the list of analysed ones
-						if (iter->endPos == curPos) {
-							auto namesIter = curReadsNames.begin();
-							advance(namesIter, distance(curReads.begin(), iter));
-							curReadsNames.erase(namesIter);
-							iter = curReads.erase(iter);
-						} else {
-							iter->index++;
-							++iter;
-						}
-					}
-				}
+				auto curErrors = curReads.iteration(curPos, linePos, MIN_READS);
+				if (!curErrors.empty()) errors.merge(curErrors);
 
 				nucleoCounter.flush();
 			}
@@ -125,6 +72,11 @@ int main(int argc, char* argv[]) {
 		}
 
 		errors.merge(insertions.findInsertionMutations(MIN_READS));
+	}
+
+	//We may have out of boundary indices that are not within the defined windows
+	if (auto nextWindIns = insertions.getNextWindowInsertions(); !nextWindIns.empty()) {
+		errors.merge(Insertions(nextWindIns).findInsertionMutations(MIN_READS));
 	}
 
 	auto csvMap = FR::readFreeBayesVCF(referenceCsv);

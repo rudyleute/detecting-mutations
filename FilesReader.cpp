@@ -199,9 +199,7 @@ AlignmentMaps FilesReader::getAlignments(
 ) {
 	samFile* in = sam_open(fileName.c_str(), "r");
 	bam_hdr_t* header = sam_hdr_read(in);
-
 	hts_idx_t* idx = sam_index_load(in, fileName.c_str());
-
 	hts_itr_t* iter = sam_itr_querys(idx, header,
 	                                 ("NC_001416:" + std::to_string(from) + "-" + std::to_string(to)).c_str());
 	bam1_t* b = bam_init1();
@@ -297,8 +295,7 @@ AlignmentMaps FilesReader::getAlignments(
 
 		//If the section before the end clipping is not an insertion one, the remaining string still needs to be read
 		if (readFromIndex != curReadIndex)
-			noInsertionsRead += expandedRead.substr(
-				readFromIndex, curReadIndex - readFromIndex);
+			noInsertionsRead += expandedRead.substr(readFromIndex, curReadIndex - readFromIndex);
 
 		// The BAM library stores the position for the aligned bases
 		startingPos[readSDStart].insert(make_pair(noInsertionsRead, name));
