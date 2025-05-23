@@ -111,7 +111,7 @@ public:
 struct Insertions {
 private:
 	InsertionMap insertions;
-	InsertionMap insertionsOOB;
+	InsertionMap nextWindowInsertions;
 	set<size_t> insertionIndices;
 
 	InsertionMap* curMap;
@@ -135,9 +135,9 @@ public:
 
 	Insertions(
 		const InsertionMap& insertions,
-		const InsertionMap& insertionsOOB = InsertionMap(),
+		const InsertionMap& nextWindowInsertions = InsertionMap(),
 		const set<size_t>& insertionIndices = set<size_t>()
-	): insertions(insertions), insertionsOOB(insertionsOOB), insertionIndices(insertionIndices) {
+	): insertions(insertions), nextWindowInsertions(nextWindowInsertions), insertionIndices(insertionIndices) {
 		curMap = &this->insertions;
 	}
 
@@ -145,8 +145,8 @@ public:
 		this->expandedRead = move(expandedRead);
 		this->name = move(name);
 	}
-	InsertionMap getInsertionsOOB() const {
-		return insertionsOOB;
+	InsertionMap getNextWindowInsertions() const {
+		return nextWindowInsertions;
 	}
 
 	void addInsertion(
@@ -158,7 +158,7 @@ public:
 	) {
 		if (left != end) {
 			this->addValues(refGenIndex, curReadIndex, 0, left, isInsertion);
-			curMap = &this->insertionsOOB;
+			curMap = &this->nextWindowInsertions;
 			this->addValues(refGenIndex, curReadIndex, left, end, isInsertion);
 			curMap = &this->insertions;
 		} else this->addValues(refGenIndex, curReadIndex, 0, end, isInsertion);
@@ -167,9 +167,9 @@ public:
 	Mutations findInsertionMutations(const size_t &minReads) {
 		Mutations errors;
 
-		for (const auto& [first, second] : insertions) {
-			if (second.first.size() >= minReads)
-				if (const char maxNucleo = second.first.findMax('-'); maxNucleo != '-') errors[first] = make_pair(
+		for (const size_t &index: insertionIndices) {
+			if (insertions[index].first.size() >= minReads)
+				if (const char maxNucleo = insertions[index].first.findMax('-'); maxNucleo != '-') errors[index] = make_pair(
 					maxNucleo, 'I');
 		}
 

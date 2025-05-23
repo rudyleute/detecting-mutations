@@ -219,7 +219,6 @@ AlignmentMaps FilesReader::getAlignments(
 
 		const string read = getRead(b);
 		string expandedRead = getExpandedRead(read, cigarExpanded);
-		insertions.setRead(expandedRead, name);
 
 		//Aligned position for the string with cut out insertions (for the direct substitution and deletion analysis)
 		size_t readSDStart = pos;
@@ -255,6 +254,7 @@ AlignmentMaps FilesReader::getAlignments(
 		size_t readFromIndex = 0;
 		size_t curReadIndex = 0;
 
+		insertions.setRead(expandedRead, name);
 		for (auto cigarIter = cigarExpanded.begin(); cigarIter != cigarExpanded.end(); cigarIter++) {
 			const size_t refGenIndex = startPos - insertionsFound + curReadIndex;
 			const bool isInsertion = cigarIter->first == 'I';

@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
 	for (size_t windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getInsertionsOOB());
+		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getNextWindowInsertions());
 		startingPos = alignments.startingPos;
 		insertions = alignments.windowInsertions;
 
