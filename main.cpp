@@ -21,7 +21,8 @@ int main(int argc, char* argv[]) {
 	const string fpRefGen = FM::formFullPath(argv[2]);
 	const string referenceCsv = FM::formFullPath(argv[3]);
 
-	auto refGenLen = FM::getRefGenLength(fpAlignment);
+	const size_t refGenLen = FM::getRefGenLength(fpAlignment);
+	const string refGenName = FM::getRefGenName(fpAlignment);
 
 	ifstream refGenFile(fpRefGen);
 	if (!refGenFile.is_open()) {
@@ -45,10 +46,12 @@ int main(int argc, char* argv[]) {
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
 	for (windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		alignments = FM::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getNextWindowInsertions());
+		alignments = FM::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, refGenName, insertions.getNextWindowInsertions());
 		startingPos = alignments.startingPos;
 		insertions = alignments.windowInsertions;
 		Mutations errors;
+		curReads.flushNonErrors();
+		insertions.flushNonErrors();
 
 		size_t linesCovered = 0;
 		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, curRefGenLine)) {
@@ -65,7 +68,8 @@ int main(int argc, char* argv[]) {
 				//TODO instead of constantly iterating over reads, have a map that will store pointers to the respective curReads and name of the read
 
 				// If the number of reads for the current position is less than 5, we do not have enough data to do a meaningful evaluation
-				auto curErrors = curReads.iteration(curPos, linePos, MIN_READS);
+				const bool isMutation = csvMap.find(curPos) != csvMap.end() && std::get<1>(csvMap[curPos]) != 'I';
+				auto curErrors = curReads.iteration(curPos, linePos, MIN_READS, isMutation);
 				if (!curErrors.empty()) errors.merge(curErrors);
 
 				nucleoCounter.flush();
@@ -74,17 +78,23 @@ int main(int argc, char* argv[]) {
 			linesCovered++;
 		}
 
-		errors.merge(insertions.findInsertionMutations(MIN_READS));
-		auto aux = Comparator::compareMaps(csvMap, errors, windowStartInd, windowStartInd + WINDOW_SIZE);
+		errors.merge(insertions.findInsertionMutations(csvMap, MIN_READS));
+		auto nonErrors = insertions.getNonErrors();
+		auto nonErrors2 = curReads.getNonErrors();
+		nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
+		auto aux = Comparator::compareMaps(csvMap, errors, nonErrors, windowStartInd, windowStartInd + WINDOW_SIZE);
 		res.merge(aux);
 	}
 
 	//We may have out of boundary indices that are not within the defined windows
 	Mutations errors;
 	if (auto nextWindIns = insertions.getNextWindowInsertions(); !nextWindIns.empty()) {
-		errors.merge(Insertions(nextWindIns).findInsertionMutations(MIN_READS));
+		errors.merge(Insertions(nextWindIns).findInsertionMutations(csvMap, MIN_READS));
 	}
-	auto aux = Comparator::compareMaps(csvMap, errors, windowStartInd - WINDOW_SIZE, windowStartInd);
+	auto nonErrors = insertions.getNonErrors();
+	auto nonErrors2 = curReads.getNonErrors();
+	nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
+	auto aux = Comparator::compareMaps(csvMap, errors, nonErrors, windowStartInd - WINDOW_SIZE, windowStartInd);
 	res.merge(aux);
 
 	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment), res);

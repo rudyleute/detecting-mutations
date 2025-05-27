@@ -16,19 +16,20 @@ public:
 	static std::map<std::string, std::tuple<size_t, size_t, size_t>> cigarIndices;
 
 	static AlignmentMaps getAlignments(
-		const std::string& fileName,
+		const string& fileName,
 		const size_t& from,
 		const size_t& to,
-		InsertionMap prevIterInsertions
+		const string& refName,
+		const InsertionMap& prevIterInsertions
 	);
 	static size_t getRefGenLength(const std::string& fileName);
-	static string getRefGenName(const string& fileName) ;
+	static string getRefGenName(const string& fileName);
 	static string getRefGen(const string& fileName);
 	static MutationsVCF readFreeBayesVCF(const string& fileName);
 	static CigarString getCigarString(const bam1_t* b);
 	static string getRead(const bam1_t* b);
 	static string getExpandedRead(string read, CigarString& cigar);
 	static string formFullPath(const string& fileName);
-	static void saveToCsv(const string &geneName, CompRes &errors);
+	static void saveToCsv(const string& geneName, CompRes& errors);
 };
 #endif //FILESREADER_H

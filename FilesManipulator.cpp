@@ -118,29 +118,39 @@ string FM::getExpandedRead(string read, CigarString& cigar) {
 }
 
 void FM::saveToCsv(const string& geneName, CompRes& errors) {
-	ofstream fout(FM::formFullPath(geneName + ".csv"));
-
-	fout << "Type, Index, Action, Symbol, ";
-	for (const auto &aux: nucleoMapping) fout << aux.first << ", ";
-	fout << "Expected Index, ExpectedAction" << endl;
+	std::map<size_t, string> indices;
 
 	for (const auto &aux: errors.diffInVCF) {
-		fout << "Missed, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux) << endl;
+		ostringstream str;
+		str << "Missed, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
+		for (const auto aux2: std::get<3>(aux).getCounters()) str << ", " << aux2;
+		indices[std::get<0>(aux)] = str.str();
 	}
 
 	for (const auto &aux: errors.diffInCust) {
-		fout << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
-		for (const auto aux2: std::get<3>(aux).getCounters()) fout << ", " << aux2;
-		fout << endl;
+		ostringstream str;
+		str << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
+		for (const auto aux2: std::get<3>(aux).getCounters()) str << ", " << aux2;
+		indices[std::get<0>(aux)] = str.str();
 	}
 
 	for (const auto &aux: errors.errors) {
-		fout << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
-		for (const auto aux2: std::get<5>(aux).getCounters()) fout << ", " << aux2;
-		fout << ", " << std::get<3>(aux) << ", " << std::get<4>(aux) << endl;
+		ostringstream str;
+		str << "Error, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
+		for (const auto aux2: std::get<5>(aux).getCounters()) str << ", " << aux2;
+		str << ", " << std::get<3>(aux) << ", " << std::get<4>(aux);
+		indices[std::get<0>(aux)] = str.str();
 	}
 
-	fout.close();
+	ofstream csvOut(FM::formFullPath(geneName + ".csv"));
+
+	csvOut << "Type, Index, Action, Symbol, ";
+	for (const auto & [fst, snd]: nucleoMapping) csvOut << fst << ", ";
+	csvOut << "Expected Nucleo, Expected Action" << endl;
+
+	for (const auto & [fst, snd]: indices) csvOut << snd << endl;
+
+	csvOut.close();
 }
 
 MutationsVCF FM::readFreeBayesVCF(const string& fileName) {
@@ -225,13 +235,14 @@ AlignmentMaps FM::getAlignments(
 	const string& fileName,
 	const size_t& from,
 	const size_t& to,
-	InsertionMap prevIterInsertions
+	const string& refName,
+	const InsertionMap& prevIterInsertions
 ) {
 	samFile* in = sam_open(fileName.c_str(), "r");
 	bam_hdr_t* header = sam_hdr_read(in);
 	hts_idx_t* idx = sam_index_load(in, fileName.c_str());
 	hts_itr_t* iter = sam_itr_querys(idx, header,
-	                                 ("NC_001416:" + std::to_string(from) + "-" + std::to_string(to)).c_str());
+	                                 (refName + ":" + std::to_string(from) + "-" + std::to_string(to)).c_str());
 	bam1_t* b = bam_init1();
 
 	std::map<size_t, set<pair<string, string>>> startingPos;

@@ -1,5 +1,6 @@
 #ifndef STRUCTURES_H
 #define STRUCTURES_H
+#include <iostream>
 #include <list>
 #include <map>
 #include <set>
@@ -14,8 +15,7 @@ struct AlignmentMaps;
 struct Insertions;
 
 using namespace std;
-using InVCF = std::vector<std::tuple<size_t, char, char>>;
-using InCust = std::vector<std::tuple<size_t, char, char, NucleoCounter>>;
+using MutationErrors = std::vector<std::tuple<size_t, char, char, NucleoCounter>>;
 using InBothEr = std::vector<std::tuple<size_t, char, char, char, char, NucleoCounter>>;
 using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
 using CigarString = list<pair<char, size_t>>;
@@ -113,6 +113,8 @@ private:
 	string expandedRead;
 	string name;
 
+	std::map<size_t, NucleoCounter> nonErrors;
+
 	void addValues(const size_t& refGenIndex, const size_t& curReadIndex, const size_t& start, const size_t& end, const bool isInsertion) {
 		for (size_t i = start; i != end; i++) {
 			if (isInsertion) {
@@ -159,16 +161,27 @@ public:
 		} else this->addValues(refGenIndex, curReadIndex, 0, end, isInsertion);
 	}
 
-	Mutations findInsertionMutations(const size_t &minReads) {
+	Mutations findInsertionMutations(const MutationsVCF &mutationsVCF, const size_t &minReads) {
 		Mutations errors;
 
 		for (const size_t &index: insertionIndices) {
 			if (insertions[index].first.size() >= minReads)
 				if (const char maxNucleo = insertions[index].first.findMax('-'); maxNucleo != '-') errors[index] = make_tuple(
 					maxNucleo, 'I', insertions[index].first);
+				else if (mutationsVCF.find(index) != mutationsVCF.end() && std::get<1>(mutationsVCF.at(index)) == 'I') {
+					nonErrors[index] = insertions[index].first;
+				}
 		}
 
 		return errors;
+	}
+
+	std::map<size_t, NucleoCounter> getNonErrors() {
+		return nonErrors;
+	}
+
+	void flushNonErrors() {
+		nonErrors.clear();
 	}
 };
 
@@ -186,14 +199,16 @@ struct AlignmentMaps {
 };
 
 struct CompRes {
-	InVCF diffInVCF;
-	InCust diffInCust;
+	MutationErrors diffInVCF;
+	MutationErrors diffInCust;
 	InBothEr errors;
+	std::map<size_t, NucleoCounter> nonErrors;
+
 
 	CompRes() = default;
 	explicit CompRes(
-		InVCF diffInVCF,
-		InCust diffInCust,
+		MutationErrors diffInVCF,
+		MutationErrors diffInCust,
 		InBothEr errors
 	): diffInVCF(std::move(diffInVCF)), diffInCust(std::move(diffInCust)), errors(std::move(errors)) {}
 
@@ -219,6 +234,7 @@ private:
 	list<Read> reads;
 	list<string> names;
 	string curRefGenLine;
+	std::map<size_t, NucleoCounter> nonErrors;
 
 public:
 	Reads() = default;
@@ -234,7 +250,7 @@ public:
 		}
 	}
 
-	Mutations iteration(const size_t& curPos, const size_t& linePos, const size_t &minReads) {
+	Mutations iteration(const size_t& curPos, const size_t& linePos, const size_t &minReads, const bool isReported) {
 		char curNucleo;
 		NucleoCounter nucleoCounter;
 		Mutations errors;
@@ -262,10 +278,20 @@ public:
 			if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[linePos]) {
 				const char actionType = maxNucleo == '-' ? 'D' : 'X';
 				errors[curPos] = make_tuple(maxNucleo, actionType, nucleoCounter);
+			} else if (isReported) {
+				nonErrors[curPos] = nucleoCounter;
 			}
 		}
 
 		return errors;
+	}
+
+	std::map<size_t, NucleoCounter> getNonErrors() {
+		return nonErrors;
+	}
+
+	void flushNonErrors() {
+		nonErrors.clear();
 	}
 };
 
