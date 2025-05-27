@@ -91,13 +91,13 @@ string FM::getRead(const bam1_t* b) {
 string FM::getExpandedRead(string read, CigarString& cigar) {
 	string expandedRead;
 	if (cigar.begin()->first == 'S' || cigar.begin()->first == 'H') {
-		read = read.substr(cigar.begin()->second);
+		if (cigar.begin()->first != 'H') read = read.substr(cigar.begin()->second);
 		cigar.erase(cigar.begin());
 	}
 
 	auto cigarLast = next(cigar.end(), -1);
 	if (cigarLast->first == 'S' || cigarLast->first == 'H') {
-		read = read.substr(0, read.size() - cigarLast->second);
+		if (cigarLast->first != 'H') read = read.substr(0, read.size() - cigarLast->second);
 		cigar.erase(cigarLast);
 	}
 
@@ -138,7 +138,7 @@ void FM::saveToCsv(const string& geneName, CompRes& errors) {
 		ostringstream str;
 		str << "Error, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
 		for (const auto aux2: std::get<5>(aux).getCounters()) str << ", " << aux2;
-		str << ", " << std::get<3>(aux) << ", " << std::get<4>(aux);
+		str << ", " << std::get<4>(aux) << ", " << std::get<3>(aux);
 		indices[std::get<0>(aux)] = str.str();
 	}
 
@@ -146,7 +146,7 @@ void FM::saveToCsv(const string& geneName, CompRes& errors) {
 
 	csvOut << "Type, Index, Action, Symbol, ";
 	for (const auto & [fst, snd]: nucleoMapping) csvOut << fst << ", ";
-	csvOut << "Expected Nucleo, Expected Action" << endl;
+	csvOut << "Expected Action, Expected Nucleo" << endl;
 
 	for (const auto & [fst, snd]: indices) csvOut << snd << endl;
 
@@ -257,6 +257,8 @@ AlignmentMaps FM::getAlignments(
 		CigarString cigarExpanded = getCigarString(b);
 
 		const string read = getRead(b);
+		//An empty read means that the read was matched at some other position
+		if (read.empty()) continue;
 		string expandedRead = getExpandedRead(read, cigarExpanded);
 
 		//Aligned position for the string with cut out insertions (for the direct substitution and deletion analysis)
@@ -283,6 +285,7 @@ AlignmentMaps FM::getAlignments(
 
 			cigarIndices.erase(name);
 		} else if (startPos < from) continue;
+		if (expandedRead.empty()) continue;
 		//Since the insertions are cut out, if the first non-clipped part of the string requires an insertion
 		//the starting index should take that into consideration
 		if (cigarExpanded.begin()->first == 'I') readSDStart += cigarExpanded.begin()->second;
@@ -302,7 +305,7 @@ AlignmentMaps FM::getAlignments(
 			if (refGenIndex + cigarIter->second >= to) {
 				//We can cover the insertions even if they get out of the window as it does not increase the indices for S and D
 				const size_t left = to - refGenIndex;
-				const size_t end = isInsertion ? cigarIter->first : left;
+				const size_t end = isInsertion ? cigarIter->second : left;
 
 				if (isInsertion) {
 					noInsertionsRead += expandedRead.substr(readFromIndex, curReadIndex - readFromIndex);

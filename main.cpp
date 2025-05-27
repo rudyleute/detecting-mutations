@@ -9,14 +9,14 @@
 
 using FM = FilesManipulator;
 
-#define FASTA_LINE_LEN 80
 #define LINES_IN_WINDOW int(1e2)
-#define WINDOW_SIZE (FASTA_LINE_LEN * LINES_IN_WINDOW)
 #define MIN_READS 5
 
 using namespace std;
 
 int main(int argc, char* argv[]) {
+	auto start = std::chrono::high_resolution_clock::now();
+
 	const string fpAlignment = FM::formFullPath(argv[1]);
 	const string fpRefGen = FM::formFullPath(argv[2]);
 	const string referenceCsv = FM::formFullPath(argv[3]);
@@ -36,6 +36,11 @@ int main(int argc, char* argv[]) {
 	size_t linePos;
 	NucleoCounter nucleoCounter;
 	CompRes res;
+
+	while (getline(refGenFile, curRefGenLine) && (curRefGenLine.empty() || curRefGenLine[0] == '>'));
+	const size_t WINDOW_SIZE = curRefGenLine.size() * LINES_IN_WINDOW;
+
+	refGenFile.seekg(0, std::ios::beg);
 
 	auto alignments = AlignmentMaps();
 	auto startingPos = alignments.startingPos;
@@ -96,6 +101,15 @@ int main(int argc, char* argv[]) {
 	nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
 	auto aux = Comparator::compareMaps(csvMap, errors, nonErrors, windowStartInd - WINDOW_SIZE, windowStartInd);
 	res.merge(aux);
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+	auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+
+	long minutes = duration.count() / 60;
+	long seconds = duration.count() % 60;
+
+	std::cout << "Execution time: " << minutes << " minutes and " << seconds << " seconds" << std::endl;
 
 	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment), res);
 }

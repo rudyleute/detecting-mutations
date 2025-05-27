@@ -26,8 +26,8 @@ using Alignments = map<size_t, set<pair<string, string>>>;
 inline std::map<char, size_t> nucleoMapping = {
 	{'-', 0},
 	{'A', 1},
-	{'G', 2},
-	{'C', 3},
+	{'C', 2},
+	{'G', 3},
 	{'T', 4},
 };
 
@@ -115,7 +115,13 @@ private:
 
 	std::map<size_t, NucleoCounter> nonErrors;
 
-	void addValues(const size_t& refGenIndex, const size_t& curReadIndex, const size_t& start, const size_t& end, const bool isInsertion) {
+	void addValues(
+		const size_t& refGenIndex,
+		const size_t& curReadIndex,
+		const size_t& start,
+		const size_t& end,
+		const bool isInsertion
+	) {
 		for (size_t i = start; i != end; i++) {
 			if (isInsertion) {
 				(*curMap)[refGenIndex + i].first.increase(expandedRead[curReadIndex + i]);
@@ -142,6 +148,7 @@ public:
 		this->expandedRead = move(expandedRead);
 		this->name = move(name);
 	}
+
 	InsertionMap getNextWindowInsertions() const {
 		return nextWindowInsertions;
 	}
@@ -161,13 +168,14 @@ public:
 		} else this->addValues(refGenIndex, curReadIndex, 0, end, isInsertion);
 	}
 
-	Mutations findInsertionMutations(const MutationsVCF &mutationsVCF, const size_t &minReads) {
+	Mutations findInsertionMutations(const MutationsVCF& mutationsVCF, const size_t& minReads) {
 		Mutations errors;
 
-		for (const size_t &index: insertionIndices) {
+		for (const size_t& index : insertionIndices) {
 			if (insertions[index].first.size() >= minReads)
-				if (const char maxNucleo = insertions[index].first.findMax('-'); maxNucleo != '-') errors[index] = make_tuple(
-					maxNucleo, 'I', insertions[index].first);
+				if (const char maxNucleo = insertions[index].first.findMax('-'); maxNucleo != '-')
+					errors[index] = make_tuple(
+						maxNucleo, 'I', insertions[index].first);
 				else if (mutationsVCF.find(index) != mutationsVCF.end() && std::get<1>(mutationsVCF.at(index)) == 'I') {
 					nonErrors[index] = insertions[index].first;
 				}
@@ -206,13 +214,14 @@ struct CompRes {
 
 
 	CompRes() = default;
+
 	explicit CompRes(
 		MutationErrors diffInVCF,
 		MutationErrors diffInCust,
 		InBothEr errors
 	): diffInVCF(std::move(diffInVCF)), diffInCust(std::move(diffInCust)), errors(std::move(errors)) {}
 
-	void merge(CompRes &res) {
+	void merge(CompRes& res) {
 		diffInVCF.insert(diffInVCF.end(), res.diffInVCF.begin(), res.diffInVCF.end());
 		diffInCust.insert(diffInCust.end(), res.diffInCust.begin(), res.diffInCust.end());
 		this->errors.insert(this->errors.end(), res.errors.begin(), res.errors.end());
@@ -243,14 +252,14 @@ public:
 		this->curRefGenLine = refGenLine;
 	}
 
-	void addReads(const Alignments& startingPos, const size_t &curPos) {
+	void addReads(const Alignments& startingPos, const size_t& curPos) {
 		for (const auto& [first, second] : startingPos.at(curPos)) {
 			reads.emplace_front(first, curPos);
 			names.emplace_front(second);
 		}
 	}
 
-	Mutations iteration(const size_t& curPos, const size_t& linePos, const size_t &minReads, const bool isReported) {
+	Mutations iteration(const size_t& curPos, const size_t& linePos, const size_t& minReads, const bool isReported) {
 		char curNucleo;
 		NucleoCounter nucleoCounter;
 		Mutations errors;
@@ -258,6 +267,7 @@ public:
 		const bool isRelevant = reads.size() >= minReads;
 		for (auto iter = reads.begin(); iter != reads.end();) {
 			if (isRelevant) {
+				//TODO empty sequences appear again for some reason
 				curNucleo = (iter->sequence)[iter->index];
 				nucleoCounter.increase(curNucleo);
 			}
@@ -275,7 +285,8 @@ public:
 		}
 
 		if (isRelevant) {
-			if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[linePos]) {
+			if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[
+				linePos]) {
 				const char actionType = maxNucleo == '-' ? 'D' : 'X';
 				errors[curPos] = make_tuple(maxNucleo, actionType, nucleoCounter);
 			} else if (isReported) {
