@@ -4,10 +4,10 @@
 #include <utility>
 #include <list>
 
-#include "FilesReader.h"
+#include "FilesManipulator.h"
 #include "Comparator.h"
 
-using FR = FilesReader;
+using FM = FilesManipulator;
 
 #define FASTA_LINE_LEN 80
 #define LINES_IN_WINDOW int(1e2)
@@ -17,11 +17,11 @@ using FR = FilesReader;
 using namespace std;
 
 int main(int argc, char* argv[]) {
-	const string fpAlignment = FR::formFullPath(argv[1]);
-	const string fpRefGen = FR::formFullPath(argv[2]);
-	const string referenceCsv = FR::formFullPath(argv[3]);
+	const string fpAlignment = FM::formFullPath(argv[1]);
+	const string fpRefGen = FM::formFullPath(argv[2]);
+	const string referenceCsv = FM::formFullPath(argv[3]);
 
-	auto refGenLen = FR::getReferenceLength(fpAlignment);
+	auto refGenLen = FM::getRefGenLength(fpAlignment);
 
 	ifstream refGenFile(fpRefGen);
 	if (!refGenFile.is_open()) {
@@ -33,19 +33,22 @@ int main(int argc, char* argv[]) {
 	size_t curStart = 0;
 	Reads curReads;
 	size_t linePos;
-	Mutations errors;
 	NucleoCounter nucleoCounter;
+	CompRes res;
 
 	auto alignments = AlignmentMaps();
 	auto startingPos = alignments.startingPos;
 	auto insertions = alignments.windowInsertions;
+	MutationsVCF csvMap = FM::readFreeBayesVCF(referenceCsv);
+	size_t windowStartInd;
 
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
-	for (size_t windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
+	for (windowStartInd = 0; windowStartInd < refGenLen; windowStartInd += WINDOW_SIZE) {
 		// Get reads within the sliding window
-		alignments = FR::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getNextWindowInsertions());
+		alignments = FM::getAlignments(fpAlignment, windowStartInd, windowStartInd + WINDOW_SIZE, insertions.getNextWindowInsertions());
 		startingPos = alignments.startingPos;
 		insertions = alignments.windowInsertions;
+		Mutations errors;
 
 		size_t linesCovered = 0;
 		while (linesCovered < LINES_IN_WINDOW && getline(refGenFile, curRefGenLine)) {
@@ -72,14 +75,17 @@ int main(int argc, char* argv[]) {
 		}
 
 		errors.merge(insertions.findInsertionMutations(MIN_READS));
+		auto aux = Comparator::compareMaps(csvMap, errors, windowStartInd, windowStartInd + WINDOW_SIZE);
+		res.merge(aux);
 	}
 
 	//We may have out of boundary indices that are not within the defined windows
+	Mutations errors;
 	if (auto nextWindIns = insertions.getNextWindowInsertions(); !nextWindIns.empty()) {
 		errors.merge(Insertions(nextWindIns).findInsertionMutations(MIN_READS));
 	}
+	auto aux = Comparator::compareMaps(csvMap, errors, windowStartInd - WINDOW_SIZE, windowStartInd);
+	res.merge(aux);
 
-	auto csvMap = FR::readFreeBayesVCF(referenceCsv);
-	auto comp = Comparator::compareMaps(csvMap, errors);
-	cout << 3;
+	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment), res);
 }

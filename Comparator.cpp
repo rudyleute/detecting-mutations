@@ -1,22 +1,24 @@
 #include "Comparator.h"
 
-compRes Comparator::compareMaps(const Mutations& map1,
-					const Mutations& map2) {
-	std::vector<std::tuple<size_t, char, char>> difference1;
-	std::vector<std::tuple<size_t, char, char>> difference2;
-	std::vector<std::tuple<size_t, char, char, char, char>> errors;
+CompRes Comparator::compareMaps(const MutationsVCF& map1,
+					const Mutations& map2, const size_t &from, const size_t &to) {
+	InVCF diffInVCF;
+	InCust diffInCust;
+	InBothEr errors;
 
 	for (const auto& [key, val1] : map1) {
+		if (key < from || key >= to) break;
+
 		auto it = map2.find(key);
-		if (it == map2.end()) difference1.emplace_back(key, val1.first, val1.second);
-		else if (it->second != val1)
-			errors.emplace_back(key, val1.first, val1.second, it->second.first,
-								it->second.second);
+		if (it == map2.end()) diffInVCF.emplace_back(key, std::get<0>(val1), std::get<1>(val1));
+		else if (std::get<0>(it->second) != std::get<0>(val1) || std::get<1>(it->second) != std::get<1>(val1))
+			errors.emplace_back(key, std::get<0>(val1), std::get<1>(val1), std::get<0>(it->second),
+								std::get<1>(it->second), std::get<2>(it->second));
 	}
 
 	for (const auto& [key, val2] : map2) {
-		if (map1.find(key) == map1.end()) difference2.emplace_back(key, val2.first, val2.second);
+		if (map1.find(key) == map1.end()) diffInCust.emplace_back(key, std::get<0>(val2), std::get<1>(val2), std::get<2>(val2));
 	}
 
-	return compRes(difference1, difference2, errors);
+	return CompRes(diffInVCF, diffInCust, errors);
 }

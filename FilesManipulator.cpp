@@ -1,5 +1,6 @@
+#include "FilesManipulator.h"
+
 #include <iostream>
-#include "FilesReader.h"
 
 #include <filesystem>
 #include <fstream>
@@ -12,27 +13,14 @@
 #include <utility>
 #include <string>
 
+#include "Comparator.h"
+
 using namespace std;
+using FM = FilesManipulator;
 
-std::map<char, size_t> FilesReader::nucleoMapping = {
-	{'A', 0},
-	{'G', 1},
-	{'C', 2},
-	{'T', 3},
-	{'-', 4}
-};
+std::map<string, tuple<size_t, size_t, size_t>> FM::cigarIndices;
 
-std::map<size_t, char> FilesReader::rNucleoMapping = [] {
-	std::map<size_t, char> reverse;
-	for (const auto& [key, value] : FilesReader::nucleoMapping) {
-		reverse[value] = key;
-	}
-	return reverse;
-}();
-
-std::map<string, tuple<size_t, size_t, size_t>> FilesReader::cigarIndices;
-
-string FilesReader::getRefGen(const string& fileName) {
+string FM::getRefGen(const string& fileName) {
 	string refGen;
 
 	ifstream fin(fileName);
@@ -46,11 +34,11 @@ string FilesReader::getRefGen(const string& fileName) {
 	return refGen;
 }
 
-string FilesReader::formFullPath(const string& fileName) {
+string FM::formFullPath(const string& fileName) {
 	return filesystem::current_path().parent_path().string() + '/' + fileName;
 }
 
-CigarString FilesReader::getCigarString(const bam1_t* b) {
+CigarString FM::getCigarString(const bam1_t* b) {
 	auto cigar = bam_get_cigar(b);
 	size_t n_cigar = b->core.n_cigar;
 
@@ -64,8 +52,8 @@ CigarString FilesReader::getCigarString(const bam1_t* b) {
 	return cigarData;
 }
 
-Mutations FilesReader::getVCFInsertions(const string& ref, const string& alt, const size_t& pos) {
-	Mutations indels;
+MutationsVCF FM::getVCFInsertions(const string& ref, const string& alt, const size_t& pos) {
+	MutationsVCF indels;
 
 	char diff = 0;
 	for (char c : ref) diff ^= c;
@@ -75,7 +63,7 @@ Mutations FilesReader::getVCFInsertions(const string& ref, const string& alt, co
 	return indels;
 }
 
-string FilesReader::getRead(const bam1_t* b) {
+string FM::getRead(const bam1_t* b) {
 	auto* seq = bam_get_seq(b);
 	int32_t seqLen = b->core.l_qseq;
 
@@ -100,7 +88,7 @@ string FilesReader::getRead(const bam1_t* b) {
 	return read;
 }
 
-string FilesReader::getExpandedRead(string read, CigarString& cigar) {
+string FM::getExpandedRead(string read, CigarString& cigar) {
 	string expandedRead;
 	if (cigar.begin()->first == 'S' || cigar.begin()->first == 'H') {
 		read = read.substr(cigar.begin()->second);
@@ -129,7 +117,33 @@ string FilesReader::getExpandedRead(string read, CigarString& cigar) {
 	return expandedRead;
 }
 
-Mutations FilesReader::readFreeBayesVCF(const string& fileName) {
+void FM::saveToCsv(const string& geneName, CompRes& errors) {
+	ofstream fout(FM::formFullPath(geneName + ".csv"));
+
+	fout << "Type, Index, Action, Symbol, ";
+	for (const auto &aux: nucleoMapping) fout << aux.first << ", ";
+	fout << "Expected Index, ExpectedAction" << endl;
+
+	for (const auto &aux: errors.diffInVCF) {
+		fout << "Missed, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux) << endl;
+	}
+
+	for (const auto &aux: errors.diffInCust) {
+		fout << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
+		for (const auto aux2: std::get<3>(aux).getCounters()) fout << ", " << aux2;
+		fout << endl;
+	}
+
+	for (const auto &aux: errors.errors) {
+		fout << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
+		for (const auto aux2: std::get<5>(aux).getCounters()) fout << ", " << aux2;
+		fout << ", " << std::get<3>(aux) << ", " << std::get<4>(aux) << endl;
+	}
+
+	fout.close();
+}
+
+MutationsVCF FM::readFreeBayesVCF(const string& fileName) {
 	htsFile* fp = bcf_open(fileName.c_str(), "r");
 	if (!fp) {
 		cerr << "Failed to open the file " << fileName << endl;
@@ -139,7 +153,7 @@ Mutations FilesReader::readFreeBayesVCF(const string& fileName) {
 	bcf_hdr_t* hdr = bcf_hdr_read(fp);
 	bcf1_t* rec = bcf_init();
 
-	Mutations mutations;
+	MutationsVCF mutations;
 	while (bcf_read(fp, hdr, rec) == 0) {
 		bcf_unpack(rec, BCF_UN_STR);
 
@@ -175,7 +189,7 @@ Mutations FilesReader::readFreeBayesVCF(const string& fileName) {
 	return mutations;
 }
 
-size_t FilesReader::getReferenceLength(const string& fileName) {
+size_t FM::getRefGenLength(const string& fileName) {
 	samFile* in = sam_open(fileName.c_str(), "r");
 	if (!in) {
 		cerr << "Error opening file " << fileName << endl;
@@ -191,7 +205,23 @@ size_t FilesReader::getReferenceLength(const string& fileName) {
 	return refLen;
 }
 
-AlignmentMaps FilesReader::getAlignments(
+string FM::getRefGenName(const string& fileName) {
+	samFile* in = sam_open(fileName.c_str(), "r");
+	if (!in) {
+		cerr << "Error opening file " << fileName << endl;
+		throw runtime_error("Error opening file " + fileName);
+	}
+
+	bam_hdr_t* header = sam_hdr_read(in);
+	const string refName = header->target_name[0];
+
+	bam_hdr_destroy(header);
+	sam_close(in);
+
+	return refName;
+}
+
+AlignmentMaps FM::getAlignments(
 	const string& fileName,
 	const size_t& from,
 	const size_t& to,
