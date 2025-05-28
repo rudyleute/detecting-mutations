@@ -19,8 +19,8 @@ using MutationErrors = std::vector<std::tuple<size_t, char, char, NucleoCounter>
 using InBothEr = std::vector<std::tuple<size_t, char, char, char, char, NucleoCounter>>;
 using InsertionMap = std::map<size_t, std::pair<NucleoCounter, std::set<std::string>>>;
 using CigarString = list<pair<char, size_t>>;
-using Mutations = std::map<size_t, std::tuple<char, char, NucleoCounter>>;
-using MutationsVCF = std::map<size_t, std::tuple<char, char>>;
+using Mutations = std::map<size_t, vector<std::tuple<char, char, NucleoCounter>>>;
+using MutationsVCF = std::map<size_t, vector<std::tuple<char, char>>>;
 using Alignments = map<size_t, set<pair<string, string>>>;
 
 inline std::map<char, size_t> nucleoMapping = {
@@ -174,17 +174,31 @@ public:
 		for (const size_t& index : insertionIndices) {
 			if (insertions[index].first.size() >= minReads)
 				if (const char maxNucleo = insertions[index].first.findMax('-'); maxNucleo != '-')
-					errors[index] = make_tuple(
-						maxNucleo, 'I', insertions[index].first);
-				else if (mutationsVCF.find(index) != mutationsVCF.end() && std::get<1>(mutationsVCF.at(index)) == 'I') {
-					nonErrors[index] = insertions[index].first;
+					errors[index].emplace_back(maxNucleo, 'I', insertions[index].first);
+		}
+
+		const size_t min = *insertionIndices.begin();
+		const size_t max = *insertionIndices.rbegin();
+
+		for (const auto& aux: mutationsVCF) {
+			if (aux.first < min) continue;
+			if (aux.first > max) break;
+
+			bool isInsertion = false;
+			for (const auto& reportedMut: mutationsVCF.at(aux.first)) {
+				if (std::get<1>(reportedMut) == 'I') {
+					isInsertion = true;
+					break;
 				}
+			}
+			if (errors.find(aux.first) == errors.end() && isInsertion) nonErrors[aux.first] = insertions[aux.first].first;
 		}
 
 		return errors;
 	}
 
 	std::map<size_t, NucleoCounter> getNonErrors() {
+		const auto aux = insertions[312543];
 		return nonErrors;
 	}
 
@@ -288,7 +302,7 @@ public:
 			if (const char maxNucleo = nucleoCounter.findMax(curRefGenLine[linePos]); maxNucleo != curRefGenLine[
 				linePos]) {
 				const char actionType = maxNucleo == '-' ? 'D' : 'X';
-				errors[curPos] = make_tuple(maxNucleo, actionType, nucleoCounter);
+				errors[curPos].emplace_back(maxNucleo, actionType, nucleoCounter);
 			} else if (isReported) {
 				nonErrors[curPos] = nucleoCounter;
 			}

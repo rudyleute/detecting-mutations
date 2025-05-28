@@ -59,7 +59,7 @@ MutationsVCF FM::getVCFInsertions(const string& ref, const string& alt, const si
 	for (char c : ref) diff ^= c;
 	for (char c : alt) diff ^= c;
 
-	indels[pos] = make_pair(diff, 'I');
+	indels[pos].emplace_back(diff, 'I');
 	return indels;
 }
 
@@ -181,12 +181,12 @@ MutationsVCF FM::readFreeBayesVCF(const string& fileName) {
 		size_t altLen = alt.size();
 
 		std::string variantType;
-		if (refLen == 1 && altLen == 1) mutations[pos] = std::make_pair(alt[0], 'X');
+		if (refLen == 1 && altLen == 1) mutations[pos].emplace_back(alt[0], 'X');
 		else {
 			size_t lenDiff = (refLen > altLen) ? (refLen - altLen) : (altLen - refLen);
 
-			if (lenDiff >= 2) mutations[pos + 1] = std::make_pair('U', 'C');
-			else if (refLen > altLen) mutations[pos + 1] = std::make_pair('-', 'D');
+			if (lenDiff >= 2) mutations[pos + 1].emplace_back('U', 'C');
+			else if (refLen > altLen) mutations[pos + 1].emplace_back('-', 'D');
 			else if (refLen < altLen) mutations.merge(getVCFInsertions(ref, alt, pos + 1));
 		}
 	}

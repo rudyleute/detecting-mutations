@@ -2,7 +2,6 @@
 #include <iostream>
 #include <fstream>
 #include <utility>
-#include <list>
 
 #include "FilesManipulator.h"
 #include "Comparator.h"
@@ -73,7 +72,16 @@ int main(int argc, char* argv[]) {
 				//TODO instead of constantly iterating over reads, have a map that will store pointers to the respective curReads and name of the read
 
 				// If the number of reads for the current position is less than 5, we do not have enough data to do a meaningful evaluation
-				const bool isMutation = csvMap.find(curPos) != csvMap.end() && std::get<1>(csvMap[curPos]) != 'I';
+				bool isMutation = false;
+				if (csvMap.find(curPos) != csvMap.end()) {
+					for (const auto& aux: csvMap.at(curPos)) {
+						if (std::get<1>(aux) != 'I') {
+							isMutation = true;
+							break;
+						}
+					}
+				}
+
 				auto curErrors = curReads.iteration(curPos, linePos, MIN_READS, isMutation);
 				if (!curErrors.empty()) errors.merge(curErrors);
 
@@ -83,7 +91,10 @@ int main(int argc, char* argv[]) {
 			linesCovered++;
 		}
 
-		errors.merge(insertions.findInsertionMutations(csvMap, MIN_READS));
+		const auto insErrors = insertions.findInsertionMutations(csvMap, MIN_READS);
+		for (const auto& [key, vec] : insErrors) {
+			errors[key].insert(errors[key].end(), vec.begin(), vec.end());
+		}
 		auto nonErrors = insertions.getNonErrors();
 		auto nonErrors2 = curReads.getNonErrors();
 		nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
@@ -95,12 +106,12 @@ int main(int argc, char* argv[]) {
 	Mutations errors;
 	if (auto nextWindIns = insertions.getNextWindowInsertions(); !nextWindIns.empty()) {
 		errors.merge(Insertions(nextWindIns).findInsertionMutations(csvMap, MIN_READS));
+		auto nonErrors = insertions.getNonErrors();
+		auto nonErrors2 = curReads.getNonErrors();
+		nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
+		auto aux = Comparator::compareMaps(csvMap, errors, nonErrors, windowStartInd, windowStartInd + WINDOW_SIZE);
+		res.merge(aux);
 	}
-	auto nonErrors = insertions.getNonErrors();
-	auto nonErrors2 = curReads.getNonErrors();
-	nonErrors.insert(nonErrors2.begin(), nonErrors2.end());
-	auto aux = Comparator::compareMaps(csvMap, errors, nonErrors, windowStartInd - WINDOW_SIZE, windowStartInd);
-	res.merge(aux);
 
 	auto end = std::chrono::high_resolution_clock::now();
 
@@ -111,5 +122,5 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Execution time: " << minutes << " minutes and " << seconds << " seconds" << std::endl;
 
-	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment), res);
+	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment) + "new", res);
 }

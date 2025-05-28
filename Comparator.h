@@ -10,8 +10,8 @@ using namespace std;
 class Comparator {
 public:
 	static CompRes compareMaps(
-		const MutationsVCF& map1,
-		const Mutations& map2,
+		MutationsVCF& map1,
+		Mutations& map2,
 		std::map<size_t, NucleoCounter> nonErrors,
 		const size_t &from,
 		const size_t &to
