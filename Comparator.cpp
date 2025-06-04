@@ -61,6 +61,8 @@ CompRes Comparator::compareMaps(
 					errors.emplace_back(iter->first, std::get<0>(*vecIter), std::get<1>(*vecIter),
 					                    std::get<0>(it->second[0]), std::get<1>(it->second[0]),
 					                    std::get<2>(it->second[0]));
+
+					if (it->second.size() == 1) it->second.erase(it->second.begin());
 				}
 				vecIter = iter->second.erase(vecIter);
 			}

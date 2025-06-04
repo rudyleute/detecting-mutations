@@ -117,43 +117,49 @@ string FM::getExpandedRead(string read, CigarString& cigar) {
 	return expandedRead;
 }
 
-void FM::saveToCsv(const string& geneName, CompRes& errors) {
-	std::map<size_t, string> indices;
+void FM::saveToCsv(const string& geneName, CompRes& errors, const size_t& reportedErrorsVCF) {
+	std::map<size_t, set<string>> indices;
 
-	for (const auto &aux: errors.diffInVCF) {
+	for (const auto& aux : errors.diffInVCF) {
 		ostringstream str;
 		str << "Missed, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
-		for (const auto aux2: std::get<3>(aux).getCounters()) str << ", " << aux2;
-		indices[std::get<0>(aux)] = str.str();
+		for (const auto aux2 : std::get<3>(aux).getCounters()) str << ", " << aux2;
+		indices[std::get<0>(aux)].insert(str.str());
 	}
 
-	for (const auto &aux: errors.diffInCust) {
+	for (const auto& aux : errors.diffInCust) {
 		ostringstream str;
 		str << "Additional, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
-		for (const auto aux2: std::get<3>(aux).getCounters()) str << ", " << aux2;
-		indices[std::get<0>(aux)] = str.str();
+		for (const auto aux2 : std::get<3>(aux).getCounters()) str << ", " << aux2;
+		indices[std::get<0>(aux)].insert(str.str());
 	}
 
-	for (const auto &aux: errors.errors) {
+	size_t nErrors = errors.diffInVCF.size();
+	for (const auto& aux : errors.errors) {
+		if (std::get<2>(aux) != 'C') nErrors++;
+
 		ostringstream str;
 		str << "Error, " << std::get<0>(aux) << ", " << std::get<2>(aux) << ", " << std::get<1>(aux);
-		for (const auto aux2: std::get<5>(aux).getCounters()) str << ", " << aux2;
+		for (const auto aux2 : std::get<5>(aux).getCounters()) str << ", " << aux2;
 		str << ", " << std::get<4>(aux) << ", " << std::get<3>(aux);
-		indices[std::get<0>(aux)] = str.str();
+		indices[std::get<0>(aux)].insert(str.str());
 	}
 
 	ofstream csvOut(FM::formFullPath(geneName + ".csv"));
+	csvOut << "Errors reported by FreeBayes, Missed + Errors fraction, Missed, Additional, Errors" << endl;
+	csvOut << reportedErrorsVCF << ", " << round(nErrors * 10000.0 / reportedErrorsVCF) / 10000.0 << ", " << errors.diffInVCF.size() << ", " << errors.diffInCust.size() << ", " << errors.errors.size() << ", " << endl;
 
 	csvOut << "Type, Index, Action, Symbol, ";
-	for (const auto & [fst, snd]: nucleoMapping) csvOut << fst << ", ";
+	for (const auto& [fst, snd] : nucleoMapping) csvOut << fst << ", ";
 	csvOut << "Expected Action, Expected Nucleo" << endl;
 
-	for (const auto & [fst, snd]: indices) csvOut << snd << endl;
-
+	for (const auto& [fst, snd] : indices) {
+		for (const auto& value : snd) csvOut << value << endl;
+	}
 	csvOut.close();
 }
 
-MutationsVCF FM::readFreeBayesVCF(const string& fileName) {
+MutationsVCF FM::readFreeBayesVCF(const string& fileName, size_t& reportedErrorsVCF) {
 	htsFile* fp = bcf_open(fileName.c_str(), "r");
 	if (!fp) {
 		cerr << "Failed to open the file " << fileName << endl;
@@ -189,6 +195,7 @@ MutationsVCF FM::readFreeBayesVCF(const string& fileName) {
 			else if (refLen > altLen) mutations[pos + 1].emplace_back('-', 'D');
 			else if (refLen < altLen) mutations.merge(getVCFInsertions(ref, alt, pos + 1));
 		}
+		reportedErrorsVCF++;
 	}
 
 	// Cleanup
@@ -338,8 +345,8 @@ AlignmentMaps FM::getAlignments(
 		}
 
 		//If the section before the end clipping is not an insertion one, the remaining string still needs to be read
-		if (readFromIndex != curReadIndex)
-			noInsertionsRead += expandedRead.substr(readFromIndex, curReadIndex - readFromIndex);
+		if (readFromIndex != curReadIndex) noInsertionsRead += expandedRead.substr(
+			readFromIndex, curReadIndex - readFromIndex);
 
 		// The BAM library stores the position for the aligned bases
 		startingPos[readSDStart].insert(make_pair(noInsertionsRead, name));

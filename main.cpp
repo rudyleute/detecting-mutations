@@ -44,7 +44,8 @@ int main(int argc, char* argv[]) {
 	auto alignments = AlignmentMaps();
 	auto startingPos = alignments.startingPos;
 	auto insertions = alignments.windowInsertions;
-	MutationsVCF csvMap = FM::readFreeBayesVCF(referenceCsv);
+	size_t reportedErrorsVCF = 0;
+	MutationsVCF csvMap = FM::readFreeBayesVCF(referenceCsv, reportedErrorsVCF);
 	size_t windowStartInd;
 
 	// Iterating through all the available sliding windows in order to cover the whole ref genome without memory exhaustion
@@ -122,5 +123,5 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Execution time: " << minutes << " minutes and " << seconds << " seconds" << std::endl;
 
-	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment) + "new", res);
+	FilesManipulator::saveToCsv(FM::getRefGenName(fpAlignment) + "new", res, reportedErrorsVCF);
 }

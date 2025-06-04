@@ -25,11 +25,11 @@ public:
 	static size_t getRefGenLength(const std::string& fileName);
 	static string getRefGenName(const string& fileName);
 	static string getRefGen(const string& fileName);
-	static MutationsVCF readFreeBayesVCF(const string& fileName);
+	static MutationsVCF readFreeBayesVCF(const string& fileName, size_t &reportedErrorsVCF);
 	static CigarString getCigarString(const bam1_t* b);
 	static string getRead(const bam1_t* b);
 	static string getExpandedRead(string read, CigarString& cigar);
 	static string formFullPath(const string& fileName);
-	static void saveToCsv(const string& geneName, CompRes& errors);
+	static void saveToCsv(const string& geneName, CompRes& errors, const size_t &reportedErrorsVCF);
 };
 #endif //FILESREADER_H
